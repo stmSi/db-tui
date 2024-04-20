@@ -16,6 +16,7 @@ pub struct Theme {
     cmdbar_bg: Color,
     cmdbar_extra_lines_bg: Color,
     disabled_fg: Color,
+    enabled_fg: Color,
     danger_fg: Color,
     line_break: String,
     block_title_focused: Color,
@@ -44,9 +45,9 @@ impl Theme {
         }
     }
 
-    pub fn tab(&self, selected: bool) -> Style {
+    pub fn tab(&self, enabled: bool, selected: bool) -> Style {
         if selected {
-            self.text(true, false)
+            self.text(enabled, false)
                 .fg(self.selected_tab)
                 .add_modifier(Modifier::BOLD)
         } else {
@@ -58,7 +59,7 @@ impl Theme {
         match (enabled, selected) {
             (false, false) => Style::default().fg(self.disabled_fg),
             (false, true) => Style::default().bg(self.selection_bg),
-            (true, false) => Style::default(),
+            (true, false) => Style::default().fg(self.enabled_fg),
             (true, true) => Style::default().fg(self.command_fg).bg(self.selection_bg),
         }
     }
@@ -111,7 +112,8 @@ impl Default for Theme {
             command_fg: Color::White,
             cmdbar_bg: Color::Blue,
             cmdbar_extra_lines_bg: Color::Blue,
-            disabled_fg: Color::Blue,
+            disabled_fg: Color::DarkGray,
+            enabled_fg: Color::Blue,
             danger_fg: Color::Red,
             line_break: "¶".to_string(),
             block_title_focused: Color::Reset,

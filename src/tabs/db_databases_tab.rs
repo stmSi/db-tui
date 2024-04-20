@@ -19,7 +19,7 @@ impl Default for DbDatabasesTab {
     fn default() -> Self {
         Self {
             title: "Databases".to_string(),
-            disabled: false,
+            disabled: true,
         }
     }
 }

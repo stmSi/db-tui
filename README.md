@@ -22,3 +22,4 @@ cargo run
 `q` to quit 
 `<TAB>` to switch between tabs
 `j`, `k` Or arrow keys to navigate Up/Down
+`F12` to open/close the logs Window

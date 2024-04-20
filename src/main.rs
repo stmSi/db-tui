@@ -1,10 +1,12 @@
 use std::io;
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
+use log::*;
 use ratatui::{
     prelude::*,
     widgets::{block::*, *},
 };
+use tui_logger::*;
 mod args;
 mod tabs;
 mod tui;
@@ -30,6 +32,8 @@ pub struct App {
     theme: SharedTheme,
     tabs: Vec<Box<dyn DBTab>>,
     current_tab_index: usize,
+    show_logs_window: bool,
+    tui_widget_state: TuiWidgetState,
 }
 
 impl Default for App {
@@ -45,6 +49,8 @@ impl Default for App {
                 Box::new(DbTablesTab::default()),
             ],
             current_tab_index: 0,
+            show_logs_window: false,
+            tui_widget_state: TuiWidgetState::new().set_default_display_level(LevelFilter::Debug),
         }
     }
 }
@@ -52,11 +58,17 @@ impl Default for App {
 impl App {
     pub fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
         while self.do_quit == QuitState::None {
-            terminal.draw(|frame| {
-                if let Err(e) = self.draw(frame) {
-                    log::error!("failed to draw: {:?}", e);
-                }
-            })?;
+            if self.show_logs_window {
+                terminal.draw(|frame| {
+                    let _ = self.draw_log_window(frame);
+                })?;
+            } else {
+                terminal.draw(|frame| {
+                    if let Err(e) = self.draw(frame) {
+                        log::error!("failed to draw: {:?}", e);
+                    }
+                })?;
+            }
             self.handle_events()?;
         }
         Ok(())
@@ -82,25 +94,41 @@ impl App {
                     self.switch_prev_tab()
                 }
             }
-            KeyCode::Char('j') | KeyCode::Down => {}
-            _ => {}
+            KeyCode::F(12) => self.show_logs_window = !self.show_logs_window,
+            _ => {
+                let _ = self.tabs[self.current_tab_index].handle_input(key_event);
+            }
         }
-
-        let _ = self.tabs[self.current_tab_index].handle_input(key_event);
 
         Ok(())
     }
 
     fn switch_next_tab(&mut self) {
+        let enabled_tabs_num = self.tabs.iter().filter(|tab| !tab.is_disabled()).count();
+        if enabled_tabs_num < 2 {
+            return;
+        }
         self.current_tab_index = (self.current_tab_index + 1) % self.tabs.len();
+        if self.tabs[self.current_tab_index].is_disabled() {
+            self.switch_next_tab();
+        }
     }
 
     fn switch_prev_tab(&mut self) {
+        let enabled_tabs_num = self.tabs.iter().filter(|tab| !tab.is_disabled()).count();
+        if enabled_tabs_num < 2 {
+            return;
+        }
+
         self.current_tab_index = if self.current_tab_index == 0 {
             self.tabs.len() - 1
         } else {
             self.current_tab_index - 1
         };
+
+        if self.tabs[self.current_tab_index].is_disabled() {
+            self.switch_prev_tab();
+        }
     }
 
     fn quit(&mut self) {
@@ -164,18 +192,51 @@ impl App {
                         .borders(Borders::ALL)
                         .border_style(self.theme.block(false)),
                 )
-                .style(self.theme.tab(false))
-                .highlight_style(self.theme.tab(true))
+                .style(
+                    self.theme
+                        .tab(!self.tabs[self.current_tab_index].is_disabled(), false),
+                )
+                .highlight_style(
+                    self.theme
+                        .tab(!self.tabs[self.current_tab_index].is_disabled(), true),
+                )
                 .divider(divider)
                 .select(self.current_tab_index),
             r,
         );
     }
+
+    fn draw_log_window(&self, f: &mut Frame) -> io::Result<()> {
+        let size = f.size();
+
+        TuiLoggerWidget::default()
+            .block(Block::bordered().title("Logs").borders(Borders::TOP))
+            .style_error(Style::default().fg(Color::Red))
+            .style_debug(Style::default().fg(Color::Green))
+            .style_warn(Style::default().fg(Color::Yellow))
+            .style_trace(Style::default().fg(Color::Magenta))
+            .style_info(Style::default().fg(Color::Cyan))
+            .output_separator('|')
+            .output_timestamp(Some("%F %H:%M:%S%.3f".to_string()))
+            .output_level(Some(TuiLoggerLevelOutput::Long))
+            .output_target(false)
+            .output_file(true)
+            .output_line(true)
+            .state(&self.tui_widget_state)
+            .render(size, f.buffer_mut());
+
+        Ok(())
+    }
 }
 
 fn main() -> io::Result<()> {
+    let _ = init_logger(LevelFilter::Debug);
+    set_default_level(LevelFilter::Debug);
+    debug!("Starting application");
+
     let mut terminal = tui::init()?;
-    let app_result = App::default().run(&mut terminal);
+    let mut app = App::default();
+    let app_result = app.run(&mut terminal);
     tui::restore()?;
     app_result
 }
