@@ -5,6 +5,7 @@ use ratatui::{
     prelude::*,
     widgets::{block::*, *},
 };
+use unicode_width::UnicodeWidthStr;
 mod args;
 mod keys;
 mod strings;
@@ -14,9 +15,12 @@ mod ui;
 
 use crate::tabs::DBTab;
 use keys::{KeyConfig, SharedKeyConfig};
-use tabs::db_types_tab::DbTypesTab;
+use tabs::db_connecitons_tab::*;
+use tabs::db_databases_tab::*;
+use tabs::db_tables_tab::*;
+use tabs::db_types_tab::*;
+
 use ui::style::SharedTheme;
-use unicode_width::UnicodeWidthStr;
 #[derive(Clone, Debug, PartialEq)]
 pub enum QuitState {
     None,
@@ -28,7 +32,6 @@ pub struct App {
     title: String,
     do_quit: QuitState,
     key_config: SharedKeyConfig,
-    tabs_size: usize,
     theme: SharedTheme,
     tabs: Vec<Box<dyn DBTab>>,
     current_tab_index: usize,
@@ -37,15 +40,15 @@ pub struct App {
 impl Default for App {
     fn default() -> Self {
         Self {
-            title: "Database Manager".to_string(),
+            title: " Database Manager ".to_string(),
             do_quit: QuitState::None,
             key_config: SharedKeyConfig::default(),
-            tabs_size: 3,
             theme: SharedTheme::default(),
             tabs: vec![
                 Box::new(DbTypesTab::default()),
-                Box::new(DbTypesTab::default()),
-                Box::new(DbTypesTab::default()),
+                Box::new(DbConnectionsTab::default()),
+                Box::new(DbDatabasesTab::default()),
+                Box::new(DbTablesTab::default()),
             ],
             current_tab_index: 0,
         }
@@ -75,15 +78,9 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) -> io::Result<()> {
-        // if key_event.modifiers.contains(event::KeyModifiers::SHIFT)
-        //     && key_event.code == KeyCode::Tab
-        // {
-        //     self.switch_prev_tab()
-        // }
         match key_event.code {
             KeyCode::Char('q') => self.quit(),
             KeyCode::Tab => {
-                log::debug!("key_event.modifiers: {:?}", key_event.modifiers);
                 if key_event.modifiers.is_empty() {
                     self.switch_next_tab()
                 }
@@ -101,12 +98,12 @@ impl App {
     }
 
     fn switch_next_tab(&mut self) {
-        self.current_tab_index = (self.current_tab_index + 1) % self.tabs_size;
+        self.current_tab_index = (self.current_tab_index + 1) % self.tabs.len();
     }
 
     fn switch_prev_tab(&mut self) {
         self.current_tab_index = if self.current_tab_index == 0 {
-            self.tabs_size - 1
+            self.tabs.len() - 1
         } else {
             self.current_tab_index - 1
         };
@@ -136,10 +133,7 @@ impl App {
         self.draw_top_bar(frame, top_bar_chunk);
 
         // draw current tab index
-        let _widget = match self.current_tab_index {
-            0 => self.tabs[self.current_tab_index].draw(frame, main_body_chunk)?,
-            _ => Paragraph::new("Not implemented yet").render(main_body_chunk, frame.buffer_mut()),
-        };
+        let _ = self.tabs[self.current_tab_index].draw(frame, main_body_chunk);
 
         frame.render_widget(
             Paragraph::new(self.current_tab_index.to_string()),
@@ -153,41 +147,19 @@ impl App {
         f.render_widget(Block::default().borders(Borders::TOP).title(title), r);
     }
 
-    //TODO: make this dynamic
     fn draw_top_bar(&self, f: &mut Frame, r: Rect) {
-        const DIVIDER_PAD_SPACES: usize = 2;
-        const SIDE_PADS: usize = 2;
-        const MARGIN_LEFT_AND_RIGHT: usize = 2;
-
         let r = r.inner(&Margin {
             vertical: 0,
             horizontal: 1,
         });
 
-        let tab_labels = [
-            Span::raw(strings::tab_db_types(&self.key_config)),
-            Span::raw(strings::tab_db_connections(&self.key_config)),
-            Span::raw(strings::tab_db_tables_and_schema(&self.key_config)),
-        ];
+        let tab_labels: Vec<Span> = self
+            .tabs
+            .iter()
+            .map(|tab| Span::raw(tab.get_title()))
+            .collect();
+
         let divider = strings::tab_divider(&self.key_config);
-
-        // heuristic, since tui doesn't provide a way to know
-        // how much space is needed to draw a `Tabs`
-        let tabs_len: usize = tab_labels.iter().map(Span::width).sum::<usize>()
-            + tab_labels.len().saturating_sub(1) * (divider.width() + DIVIDER_PAD_SPACES)
-            + SIDE_PADS
-            + MARGIN_LEFT_AND_RIGHT;
-
-        let left_right = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints(vec![
-                Constraint::Length(u16::try_from(tabs_len).unwrap_or(r.width)),
-                Constraint::Min(0),
-            ])
-            .split(r);
-
-        let table_area = r; // use entire area to allow drawing the horizontal separator line
-        let text_area = left_right[1];
 
         let tabs: Vec<Line> = tab_labels.into_iter().map(Line::from).collect();
 
@@ -202,7 +174,7 @@ impl App {
                 .highlight_style(self.theme.tab(true))
                 .divider(divider)
                 .select(self.current_tab_index),
-            table_area,
+            r,
         );
     }
 }

@@ -10,29 +10,21 @@ use ratatui::{
 use super::DBTab;
 
 #[derive(Debug)]
-pub struct DbConnectionsTab {
+pub struct DbTablesTab {
     pub title: String,
-    pub connections: Vec<String>,
-    pub selected: usize,
-    pub list_state: ListState,
-    pub num_tabs: usize,
     pub disabled: bool,
 }
 
-impl Default for DbConnectionsTab {
+impl Default for DbTablesTab {
     fn default() -> Self {
         Self {
-            title: "Connections".to_string(),
-            connections: vec![],
-            selected: 0,
-            list_state: ListState::default().with_selected(Some(0)),
-            num_tabs: 0,
+            title: "Tables".to_string(),
             disabled: false,
         }
     }
 }
 
-impl DBTab for DbConnectionsTab {
+impl DBTab for DbTablesTab {
     fn draw(&mut self, frame: &mut Frame, area: Rect) -> io::Result<()> {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -51,16 +43,6 @@ impl DBTab for DbConnectionsTab {
     }
 
     fn handle_input(&mut self, key: KeyEvent) -> io::Result<()> {
-        // match key.code {
-        //     KeyCode::Char('j') | KeyCode::Down => {
-        //         self.list_state.move_down();
-        //     }
-        //     KeyCode::Char('k') | KeyCode::Up => {
-        //         self.list_state.move_up();
-        //     }
-        //     _ => {}
-        // }
-
         Ok(())
     }
 

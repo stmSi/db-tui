@@ -14,6 +14,7 @@ pub mod order {
 
 pub static DB_TYPES: &str = "DB Types";
 pub static DB_CONNECTIONS: &str = "DB Connections";
+pub static DB_DATABASES: &str = "Database";
 pub static DB_TABLES_AND_SCHEMAS: &str = "Tables & Schemas";
 pub static POPUP_SUCCESS_COPY: &str = "Copied Text";
 
@@ -33,6 +34,10 @@ pub fn tab_db_types(_key_config: &SharedKeyConfig) -> String {
 
 pub fn tab_db_connections(_key_config: &SharedKeyConfig) -> String {
     DB_CONNECTIONS.to_string()
+}
+
+pub fn tab_db_databases(_key_config: &SharedKeyConfig) -> String {
+    DB_DATABASES.to_string()
 }
 
 pub fn tab_db_tables_and_schema(_key_config: &SharedKeyConfig) -> String {

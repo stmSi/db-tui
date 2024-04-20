@@ -11,9 +11,11 @@ use super::DBTab;
 
 #[derive(Debug)]
 pub struct DbTypesTab {
+    pub title: String,
     pub selected: usize,
     pub list_state: ListState,
     pub num_types: usize,
+    pub disabled: bool,
 }
 
 pub enum DBTypes {
@@ -42,9 +44,11 @@ impl DBTypes {
 impl Default for DbTypesTab {
     fn default() -> Self {
         Self {
+            title: "Types".to_string(),
             selected: 0,
             list_state: ListState::default().with_selected(Some(0)),
             num_types: 0,
+            disabled: false,
         }
     }
 }
@@ -100,5 +104,17 @@ impl DBTab for DbTypesTab {
             _ => {}
         }
         Ok(())
+    }
+
+    fn is_disabled(&self) -> bool {
+        self.disabled
+    }
+
+    fn set_disabled(&mut self, disabled: bool) {
+        self.disabled = disabled;
+    }
+
+    fn get_title(&self) -> String {
+        self.title.clone()
     }
 }
