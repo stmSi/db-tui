@@ -8,27 +8,30 @@ use ratatui::{
 mod args;
 mod keys;
 mod strings;
+mod tabs;
 mod tui;
 mod ui;
 
+use crate::tabs::DBTab;
 use keys::{KeyConfig, SharedKeyConfig};
+use tabs::db_types_tab::DbTypesTab;
 use ui::style::SharedTheme;
 use unicode_width::UnicodeWidthStr;
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum QuitState {
     None,
     Close,
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct App {
     title: String,
     do_quit: QuitState,
     key_config: SharedKeyConfig,
-    tab: usize,
     tabs_size: usize,
     theme: SharedTheme,
+    tabs: Vec<Box<dyn DBTab>>,
+    current_tab_index: usize,
 }
 
 impl Default for App {
@@ -37,9 +40,14 @@ impl Default for App {
             title: "Database Manager".to_string(),
             do_quit: QuitState::None,
             key_config: SharedKeyConfig::default(),
-            tab: 0,
             tabs_size: 3,
             theme: SharedTheme::default(),
+            tabs: vec![
+                Box::new(DbTypesTab::default()),
+                Box::new(DbTypesTab::default()),
+                Box::new(DbTypesTab::default()),
+            ],
+            current_tab_index: 0,
         }
     }
 }
@@ -67,9 +75,15 @@ impl App {
     }
 
     fn handle_key_event(&mut self, key_event: KeyEvent) -> io::Result<()> {
+        // if key_event.modifiers.contains(event::KeyModifiers::SHIFT)
+        //     && key_event.code == KeyCode::Tab
+        // {
+        //     self.switch_prev_tab()
+        // }
         match key_event.code {
             KeyCode::Char('q') => self.quit(),
             KeyCode::Tab => {
+                log::debug!("key_event.modifiers: {:?}", key_event.modifiers);
                 if key_event.modifiers.is_empty() {
                     self.switch_next_tab()
                 }
@@ -77,21 +91,24 @@ impl App {
                     self.switch_prev_tab()
                 }
             }
+            KeyCode::Char('j') | KeyCode::Down => {}
             _ => {}
         }
+
+        let _ = self.tabs[self.current_tab_index].handle_input(key_event);
 
         Ok(())
     }
 
     fn switch_next_tab(&mut self) {
-        self.tab = (self.tab + 1) % self.tabs_size;
+        self.current_tab_index = (self.current_tab_index + 1) % self.tabs_size;
     }
 
     fn switch_prev_tab(&mut self) {
-        self.tab = if self.tab == 0 {
+        self.current_tab_index = if self.current_tab_index == 0 {
             self.tabs_size - 1
         } else {
-            self.tab - 1
+            self.current_tab_index - 1
         };
     }
 
@@ -99,23 +116,35 @@ impl App {
         self.do_quit = QuitState::Close;
     }
 
-    fn draw(&self, frame: &mut Frame) -> io::Result<()> {
+    fn draw(&mut self, frame: &mut Frame) -> io::Result<()> {
         let main_layout = Layout::new(
             Direction::Vertical,
             [
                 Constraint::Length(1), // title
-                Constraint::Length(1), // top bar tabs list
-                Constraint::Min(1),    // main chunk for selected tab
-                Constraint::Length(5), // bottom
+                Constraint::Length(3), // top bar tabs list
+                Constraint::Min(5),    // main chunk for selected tab
+                Constraint::Length(1), // bottom
             ],
         )
         .split(frame.size());
+        let title_chunk = main_layout[0];
+        let top_bar_chunk = main_layout[1];
+        let main_body_chunk = main_layout[2];
+        let bottom_chunk = main_layout[3];
         // let [title_chunk, tab_bar_chunk, body_chunk, bottom_chunk] = main_layout;
-        self.draw_title(frame, main_layout[0]);
-        self.draw_top_bar(frame, main_layout[1]);
+        self.draw_title(frame, title_chunk);
+        self.draw_top_bar(frame, top_bar_chunk);
 
         // draw current tab index
-        frame.render_widget(Paragraph::new(self.tab.to_string()), main_layout[2]);
+        let _widget = match self.current_tab_index {
+            0 => self.tabs[self.current_tab_index].draw(frame, main_body_chunk)?,
+            _ => Paragraph::new("Not implemented yet").render(main_body_chunk, frame.buffer_mut()),
+        };
+
+        frame.render_widget(
+            Paragraph::new(self.current_tab_index.to_string()),
+            bottom_chunk,
+        );
         Ok(())
     }
 
@@ -166,13 +195,13 @@ impl App {
             Tabs::new(tabs)
                 .block(
                     Block::default()
-                        .borders(Borders::LEFT)
+                        .borders(Borders::ALL)
                         .border_style(self.theme.block(false)),
                 )
                 .style(self.theme.tab(false))
                 .highlight_style(self.theme.tab(true))
                 .divider(divider)
-                .select(self.tab),
+                .select(self.current_tab_index),
             table_area,
         );
     }

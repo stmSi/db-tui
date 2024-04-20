@@ -21,4 +21,4 @@ cargo run
 
 `q` to quit 
 `<TAB>` to switch between tabs
-
+`j`, `k` Or arrow keys to navigate Up/Down
