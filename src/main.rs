@@ -5,16 +5,12 @@ use ratatui::{
     prelude::*,
     widgets::{block::*, *},
 };
-use unicode_width::UnicodeWidthStr;
 mod args;
-mod keys;
-mod strings;
 mod tabs;
 mod tui;
 mod ui;
 
 use crate::tabs::DBTab;
-use keys::{KeyConfig, SharedKeyConfig};
 use tabs::db_connecitons_tab::*;
 use tabs::db_databases_tab::*;
 use tabs::db_tables_tab::*;
@@ -31,7 +27,6 @@ pub enum QuitState {
 pub struct App {
     title: String,
     do_quit: QuitState,
-    key_config: SharedKeyConfig,
     theme: SharedTheme,
     tabs: Vec<Box<dyn DBTab>>,
     current_tab_index: usize,
@@ -42,7 +37,6 @@ impl Default for App {
         Self {
             title: " Database Manager ".to_string(),
             do_quit: QuitState::None,
-            key_config: SharedKeyConfig::default(),
             theme: SharedTheme::default(),
             tabs: vec![
                 Box::new(DbTypesTab::default()),
@@ -159,7 +153,7 @@ impl App {
             .map(|tab| Span::raw(tab.get_title()))
             .collect();
 
-        let divider = strings::tab_divider(&self.key_config);
+        let divider = " | ";
 
         let tabs: Vec<Line> = tab_labels.into_iter().map(Line::from).collect();
 
@@ -181,10 +175,6 @@ impl App {
 
 fn main() -> io::Result<()> {
     let mut terminal = tui::init()?;
-    let key_config = KeyConfig::init()
-        .map_err(|e| eprintln!("KeyConfig loading error: {e}"))
-        .unwrap_or_default();
-
     let app_result = App::default().run(&mut terminal);
     tui::restore()?;
     app_result
