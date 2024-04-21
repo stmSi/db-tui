@@ -1,4 +1,7 @@
-use std::io::{self, Result};
+use std::{
+    io::{self, Result},
+    sync::mpsc,
+};
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -6,6 +9,8 @@ use ratatui::{
     style::Color,
     widgets::{block::*, *},
 };
+
+use crate::{App, AppEvent};
 
 use super::DBTab;
 
@@ -42,7 +47,11 @@ impl DBTab for DbDatabasesTab {
         Ok(())
     }
 
-    fn handle_input(&mut self, key: KeyEvent) -> io::Result<()> {
+    fn handle_input(
+        &mut self,
+        key: KeyEvent,
+        app_event_bus: &mpsc::Sender<AppEvent>,
+    ) -> io::Result<()> {
         Ok(())
     }
 

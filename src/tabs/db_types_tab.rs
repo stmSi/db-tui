@@ -1,4 +1,7 @@
-use std::io::{self, Result};
+use std::{
+    io::{self, Result},
+    sync::mpsc,
+};
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -6,6 +9,8 @@ use ratatui::{
     style::Color,
     widgets::{block::*, *},
 };
+
+use crate::{App, AppEvent};
 
 use super::DBTab;
 
@@ -18,6 +23,7 @@ pub struct DbTypesTab {
     pub disabled: bool,
 }
 
+#[derive(Debug)]
 pub enum DBTypes {
     POSTGRES,
     MYSQL,
@@ -79,9 +85,18 @@ impl DBTab for DbTypesTab {
         Ok(())
     }
 
-    fn handle_input(&mut self, key: KeyEvent) -> io::Result<()> {
+    fn handle_input(
+        &mut self,
+        key: KeyEvent,
+        app_event_bus: &mpsc::Sender<AppEvent>,
+    ) -> Result<()> {
         // Handle inputs specific to the DbTypes tab
         match key.code {
+            KeyCode::Enter => {
+                let _ = app_event_bus.send(AppEvent::DBTypeSelected {
+                    db_type: self.get_selected_db_type(),
+                });
+            }
             KeyCode::Down | KeyCode::Char('j') => {
                 let current_selected = self.list_state.selected().unwrap_or(0);
 
@@ -116,5 +131,17 @@ impl DBTab for DbTypesTab {
 
     fn get_title(&self) -> String {
         self.title.clone()
+    }
+}
+
+impl DbTypesTab {
+    fn get_selected_db_type(&self) -> DBTypes {
+        match self.list_state.selected().unwrap_or(0) {
+            0 => DBTypes::POSTGRES,
+            1 => DBTypes::MYSQL,
+            2 => DBTypes::MARIA,
+            3 => DBTypes::SQLITE,
+            _ => DBTypes::POSTGRES,
+        }
     }
 }

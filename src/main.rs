@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, sync::mpsc};
 
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use log::*;
@@ -25,19 +25,26 @@ pub enum QuitState {
     Close,
 }
 
-// #[derive(Debug)]
+#[derive(Debug)]
+pub enum AppEvent {
+    DBTypeSelected { db_type: DBTypes },
+    ConnectionDetailsSubmitted { connection_string: String },
+}
+
 pub struct App {
     title: String,
     do_quit: QuitState,
     theme: SharedTheme,
     tabs: Vec<Box<dyn DBTab>>,
     current_tab_index: usize,
+    db_type: Option<DBTypes>,
+    event_bus: mpsc::Sender<AppEvent>,
     show_logs_window: bool,
     tui_widget_state: TuiWidgetState,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    pub fn new(sender: mpsc::Sender<AppEvent>) -> Self {
         Self {
             title: " Database Manager ".to_string(),
             do_quit: QuitState::None,
@@ -49,6 +56,8 @@ impl Default for App {
                 Box::new(DbTablesTab::default()),
             ],
             current_tab_index: 0,
+            db_type: None,
+            event_bus: sender,
             show_logs_window: false,
             tui_widget_state: TuiWidgetState::new().set_default_display_level(LevelFilter::Debug),
         }
@@ -56,7 +65,7 @@ impl Default for App {
 }
 
 impl App {
-    pub fn run(&mut self, terminal: &mut tui::Tui) -> io::Result<()> {
+    pub fn run(&mut self, terminal: &mut tui::Tui, rx: mpsc::Receiver<AppEvent>) -> io::Result<()> {
         while self.do_quit == QuitState::None {
             if self.show_logs_window {
                 terminal.draw(|frame| {
@@ -70,6 +79,8 @@ impl App {
                 })?;
             }
             self.handle_events()?;
+
+            self.check_event_loop(&rx);
         }
         Ok(())
     }
@@ -100,7 +111,8 @@ impl App {
             }
             KeyCode::F(12) => self.show_logs_window = !self.show_logs_window,
             _ => {
-                let _ = self.tabs[self.current_tab_index].handle_input(key_event);
+                let current_tab = &mut self.tabs[self.current_tab_index];
+                current_tab.handle_input(key_event, &self.event_bus)?;
             }
         }
 
@@ -212,9 +224,6 @@ impl App {
             .map(|tab| {
                 let title = tab.get_title();
                 let line = Line::from(title);
-                debug!("tab title: {}", tab.get_title());
-                debug!("tab is disabled: {}, {}", tab.is_disabled(), false);
-                debug!("tab theme: {:?}", self.theme.tab(!tab.is_disabled(), false));
                 line.style(self.theme.tab(!tab.is_disabled(), false))
             })
             .collect();
@@ -254,16 +263,41 @@ impl App {
 
         Ok(())
     }
+
+    fn check_event_loop(&mut self, rx: &mpsc::Receiver<AppEvent>) {
+        loop {
+            let event_result = rx.try_recv();
+            if let Ok(event) = event_result {
+                match event {
+                    AppEvent::DBTypeSelected { db_type } => {
+                        // Handle database type selection
+                        debug!("Database Type Selected: {:?}", db_type);
+                        self.db_type = Some(db_type);
+                        self.switch_next_tab();
+                    }
+                    AppEvent::ConnectionDetailsSubmitted { connection_string } => {
+                        // Handle connection details submission TODO:
+                        debug!("Connection String: {}", connection_string);
+                    }
+                }
+            } else if event_result.is_err() {
+                break;
+            }
+        }
+    }
 }
 
-fn main() -> io::Result<()> {
+#[tokio::main]
+async fn main() -> io::Result<()> {
     let _ = init_logger(LevelFilter::Debug);
     set_default_level(LevelFilter::Debug);
+
+    let (tx, rx) = mpsc::channel();
+    let mut app = App::new(tx);
     debug!("Starting application");
 
     let mut terminal = tui::init()?;
-    let mut app = App::default();
-    let app_result = app.run(&mut terminal);
+    let app_result = app.run(&mut terminal, rx);
     tui::restore()?;
     app_result
 }
