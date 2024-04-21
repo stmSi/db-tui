@@ -47,20 +47,21 @@ impl Theme {
 
     pub fn tab(&self, enabled: bool, selected: bool) -> Style {
         if selected {
-            self.text(enabled, false)
+            self.text(enabled, selected)
                 .fg(self.selected_tab)
+                .bg(Color::Reset)
                 .add_modifier(Modifier::BOLD)
         } else {
-            self.text(false, false)
+            self.text(enabled, selected)
         }
     }
 
     pub fn text(&self, enabled: bool, selected: bool) -> Style {
         match (enabled, selected) {
             (false, false) => Style::default().fg(self.disabled_fg),
-            (false, true) => Style::default().bg(self.selection_bg),
+            (false, true) => Style::default().bg(self.disabled_fg),
             (true, false) => Style::default().fg(self.enabled_fg),
-            (true, true) => Style::default().fg(self.command_fg).bg(self.selection_bg),
+            (true, true) => Style::default().fg(self.command_fg),
         }
     }
 

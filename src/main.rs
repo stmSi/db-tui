@@ -77,13 +77,17 @@ impl App {
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_event(key_event)
+                if self.show_logs_window {
+                    self.handle_key_events_log_window(key_event)
+                } else {
+                    self.handle_key_event_main_app(key_event)
+                }
             }
             _ => Ok(()),
         }
     }
 
-    fn handle_key_event(&mut self, key_event: KeyEvent) -> io::Result<()> {
+    fn handle_key_event_main_app(&mut self, key_event: KeyEvent) -> io::Result<()> {
         match key_event.code {
             KeyCode::Char('q') => self.quit(),
             KeyCode::Tab => {
@@ -103,13 +107,31 @@ impl App {
         Ok(())
     }
 
+    fn handle_key_events_log_window(&mut self, key_event: KeyEvent) -> io::Result<()> {
+        match key_event.code {
+            KeyCode::Char('j') => {
+                self.tui_widget_state
+                    .transition(TuiWidgetEvent::NextPageKey);
+            }
+            KeyCode::Char('k') => self
+                .tui_widget_state
+                .transition(TuiWidgetEvent::PrevPageKey),
+            KeyCode::Char('q') => self.show_logs_window = false,
+            KeyCode::F(12) => self.show_logs_window = !self.show_logs_window,
+            _ => {}
+        }
+
+        Ok(())
+    }
+
     fn switch_next_tab(&mut self) {
         let enabled_tabs_num = self.tabs.iter().filter(|tab| !tab.is_disabled()).count();
         if enabled_tabs_num < 2 {
-            return;
+            return; // dont switch if there is only one tab
         }
         self.current_tab_index = (self.current_tab_index + 1) % self.tabs.len();
         if self.tabs[self.current_tab_index].is_disabled() {
+            // skip disabled tabs
             self.switch_next_tab();
         }
     }
@@ -117,7 +139,7 @@ impl App {
     fn switch_prev_tab(&mut self) {
         let enabled_tabs_num = self.tabs.iter().filter(|tab| !tab.is_disabled()).count();
         if enabled_tabs_num < 2 {
-            return;
+            return; // dont switch if there is only one tab
         }
 
         self.current_tab_index = if self.current_tab_index == 0 {
@@ -127,6 +149,7 @@ impl App {
         };
 
         if self.tabs[self.current_tab_index].is_disabled() {
+            // skip disabled tabs
             self.switch_prev_tab();
         }
     }
@@ -182,8 +205,19 @@ impl App {
             .collect();
 
         let divider = " | ";
-
-        let tabs: Vec<Line> = tab_labels.into_iter().map(Line::from).collect();
+        let tabs: Vec<Line> = self
+            .tabs
+            .iter()
+            // .enumerate()
+            .map(|tab| {
+                let title = tab.get_title();
+                let line = Line::from(title);
+                debug!("tab title: {}", tab.get_title());
+                debug!("tab is disabled: {}, {}", tab.is_disabled(), false);
+                debug!("tab theme: {:?}", self.theme.tab(!tab.is_disabled(), false));
+                line.style(self.theme.tab(!tab.is_disabled(), false))
+            })
+            .collect();
 
         f.render_widget(
             Tabs::new(tabs)
@@ -192,14 +226,7 @@ impl App {
                         .borders(Borders::ALL)
                         .border_style(self.theme.block(false)),
                 )
-                .style(
-                    self.theme
-                        .tab(!self.tabs[self.current_tab_index].is_disabled(), false),
-                )
-                .highlight_style(
-                    self.theme
-                        .tab(!self.tabs[self.current_tab_index].is_disabled(), true),
-                )
+                .highlight_style(self.theme.tab(false, true))
                 .divider(divider)
                 .select(self.current_tab_index),
             r,
@@ -210,7 +237,7 @@ impl App {
         let size = f.size();
 
         TuiLoggerWidget::default()
-            .block(Block::bordered().title("Logs").borders(Borders::TOP))
+            .block(Block::bordered().title(" Logs ").borders(Borders::TOP))
             .style_error(Style::default().fg(Color::Red))
             .style_debug(Style::default().fg(Color::Green))
             .style_warn(Style::default().fg(Color::Yellow))
