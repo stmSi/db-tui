@@ -13,12 +13,12 @@ mod tui;
 mod ui;
 
 use crate::tabs::DBTab;
-use tabs::db_connecitons_tab::*;
+use tabs::db_connections_tab::*;
 use tabs::db_databases_tab::*;
 use tabs::db_tables_tab::*;
 use tabs::db_types_tab::*;
 
-use ui::style::SharedTheme;
+use ui::{connection_popup::DbConnectionPopup, style::SharedTheme, Popup};
 #[derive(Clone, Debug, PartialEq)]
 pub enum QuitState {
     None,
@@ -28,10 +28,12 @@ pub enum QuitState {
 #[derive(Debug)]
 pub enum AppEvent {
     DBTypeSelected { db_type: DBTypes },
+    NewConnection,
     ConnectionDetailsSubmitted { connection_string: String },
+    CancelClosePopup,
 }
 
-pub struct App {
+pub struct App<'a> {
     title: String,
     do_quit: QuitState,
     theme: SharedTheme,
@@ -40,10 +42,11 @@ pub struct App {
     db_type: Option<DBTypes>,
     event_bus: mpsc::Sender<AppEvent>,
     show_logs_window: bool,
+    popup_stack: Vec<Popup<'a>>,
     tui_widget_state: TuiWidgetState,
 }
 
-impl App {
+impl App<'_> {
     pub fn new(sender: mpsc::Sender<AppEvent>) -> Self {
         Self {
             title: " Database Manager ".to_string(),
@@ -58,14 +61,22 @@ impl App {
             current_tab_index: 0,
             db_type: None,
             event_bus: sender,
+            popup_stack: vec![],
             show_logs_window: false,
             tui_widget_state: TuiWidgetState::new().set_default_display_level(LevelFilter::Debug),
         }
     }
+    pub fn has_popup(&self) -> bool {
+        !self.popup_stack.is_empty()
+    }
 }
 
-impl App {
-    pub fn run(&mut self, terminal: &mut tui::Tui, rx: mpsc::Receiver<AppEvent>) -> io::Result<()> {
+impl App<'_> {
+    pub async fn run(
+        &mut self,
+        terminal: &mut tui::Tui,
+        rx: mpsc::Receiver<AppEvent>,
+    ) -> io::Result<()> {
         while self.do_quit == QuitState::None {
             if self.show_logs_window {
                 terminal.draw(|frame| {
@@ -88,6 +99,10 @@ impl App {
     fn handle_events(&mut self) -> io::Result<()> {
         match event::read()? {
             Event::Key(key_event) if key_event.kind == KeyEventKind::Press => {
+                if self.has_popup() {
+                    return self.handle_popup_input(&key_event);
+                }
+
                 if self.show_logs_window {
                     self.handle_key_events_log_window(key_event)
                 } else {
@@ -100,7 +115,7 @@ impl App {
 
     fn handle_key_event_main_app(&mut self, key_event: KeyEvent) -> io::Result<()> {
         match key_event.code {
-            KeyCode::Char('q') => self.quit(),
+            KeyCode::Char('q') | KeyCode::Esc => self.quit(),
             KeyCode::Tab => {
                 if key_event.modifiers.is_empty() {
                     self.switch_next_tab()
@@ -119,6 +134,17 @@ impl App {
         Ok(())
     }
 
+    fn handle_popup_input(&mut self, key_event: &KeyEvent) -> io::Result<()> {
+        if let Some(popup) = self.popup_stack.last_mut() {
+            match popup {
+                Popup::Connection(popup) => {
+                    popup.handle_input(key_event, &self.event_bus)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     fn handle_key_events_log_window(&mut self, key_event: KeyEvent) -> io::Result<()> {
         match key_event.code {
             KeyCode::Char('j') => {
@@ -128,7 +154,7 @@ impl App {
             KeyCode::Char('k') => self
                 .tui_widget_state
                 .transition(TuiWidgetEvent::PrevPageKey),
-            KeyCode::Char('q') => self.show_logs_window = false,
+            KeyCode::Char('q') | KeyCode::Esc => self.show_logs_window = false,
             KeyCode::F(12) => self.show_logs_window = !self.show_logs_window,
             _ => {}
         }
@@ -196,6 +222,16 @@ impl App {
             Paragraph::new(self.current_tab_index.to_string()),
             bottom_chunk,
         );
+
+        if self.has_popup() {
+            if let Some(popup) = self.popup_stack.last_mut() {
+                match popup {
+                    Popup::Connection(popup) => {
+                        popup.render_widget(frame, frame.size());
+                    }
+                }
+            };
+        }
         Ok(())
     }
 
@@ -265,23 +301,39 @@ impl App {
     }
 
     fn check_event_loop(&mut self, rx: &mpsc::Receiver<AppEvent>) {
-        loop {
-            let event_result = rx.try_recv();
-            if let Ok(event) = event_result {
-                match event {
-                    AppEvent::DBTypeSelected { db_type } => {
-                        // Handle database type selection
-                        debug!("Database Type Selected: {:?}", db_type);
-                        self.db_type = Some(db_type);
-                        self.switch_next_tab();
-                    }
-                    AppEvent::ConnectionDetailsSubmitted { connection_string } => {
-                        // Handle connection details submission TODO:
-                        debug!("Connection String: {}", connection_string);
+        let event_result = rx.try_recv();
+        if let Ok(event) = event_result {
+            match event {
+                AppEvent::DBTypeSelected { db_type } => {
+                    // Handle database type selection
+                    debug!("Database Type Selected: {:?}", db_type);
+                    self.db_type = Some(db_type);
+                    self.switch_next_tab();
+                }
+                AppEvent::NewConnection => {
+                    // Handle new connection
+                    debug!("New Connection");
+                    if let Some(db_type) = &self.db_type {
+                        let popup = DbConnectionPopup::new(db_type.as_str());
+                        self.popup_stack.push(Popup::Connection(popup));
+                    } else {
+                        debug!(
+                            "No database type selected. New Connection Entry Pop failed to opened"
+                        );
                     }
                 }
-            } else if event_result.is_err() {
-                break;
+                AppEvent::ConnectionDetailsSubmitted { connection_string } => {
+                    // Handle connection details submission TODO:
+                    debug!("Connection Details Submitted: {:?}", connection_string);
+                }
+                AppEvent::CancelClosePopup => {
+                    // Handle cancel/close popup
+                    debug!(
+                        "{}",
+                        format!("Cancel/Close Popup: {:?}", self.popup_stack.last())
+                    );
+                    self.popup_stack.pop();
+                }
             }
         }
     }
@@ -297,7 +349,7 @@ async fn main() -> io::Result<()> {
     debug!("Starting application");
 
     let mut terminal = tui::init()?;
-    let app_result = app.run(&mut terminal, rx);
+    let app_result = app.run(&mut terminal, rx).await;
     tui::restore()?;
     app_result
 }

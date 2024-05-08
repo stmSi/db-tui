@@ -5,7 +5,7 @@ use ratatui::{layout::Rect, Frame};
 
 use crate::AppEvent;
 
-pub mod db_connecitons_tab;
+pub mod db_connections_tab;
 pub mod db_databases_tab;
 pub mod db_tables_tab;
 pub mod db_types_tab;
