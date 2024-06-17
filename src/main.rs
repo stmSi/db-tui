@@ -18,7 +18,10 @@ use tabs::db_databases_tab::*;
 use tabs::db_tables_tab::*;
 use tabs::db_types_tab::*;
 
-use ui::{connection_popup::DbConnectionPopup, style::SharedTheme, Popup};
+use ui::{
+    connection_popup::DbConnectionPopup, quit_confirm_popup::QuitConfirmPopup, style::SharedTheme,
+    Popup,
+};
 #[derive(Clone, Debug, PartialEq)]
 pub enum QuitState {
     None,
@@ -31,6 +34,7 @@ pub enum AppEvent {
     NewConnection,
     ConnectionDetailsSubmitted { connection_string: String },
     CancelClosePopup,
+    ConfirmQuitApp,
 }
 
 pub struct App<'a> {
@@ -115,7 +119,10 @@ impl App<'_> {
 
     fn handle_key_event_main_app(&mut self, key_event: KeyEvent) -> io::Result<()> {
         match key_event.code {
-            KeyCode::Char('q') | KeyCode::Esc => self.quit(),
+            KeyCode::Char('q') | KeyCode::Esc => {
+                let quit_popup = QuitConfirmPopup::new();
+                self.popup_stack.push(Popup::Quit(quit_popup));
+            }
             KeyCode::Tab => {
                 if key_event.modifiers.is_empty() {
                     self.switch_next_tab()
@@ -138,6 +145,9 @@ impl App<'_> {
         if let Some(popup) = self.popup_stack.last_mut() {
             match popup {
                 Popup::Connection(popup) => {
+                    popup.handle_input(key_event, &self.event_bus)?;
+                }
+                Popup::Quit(popup) => {
                     popup.handle_input(key_event, &self.event_bus)?;
                 }
             }
@@ -227,6 +237,9 @@ impl App<'_> {
             if let Some(popup) = self.popup_stack.last_mut() {
                 match popup {
                     Popup::Connection(popup) => {
+                        popup.render_widget(frame, frame.size());
+                    }
+                    Popup::Quit(popup) => {
                         popup.render_widget(frame, frame.size());
                     }
                 }
@@ -333,6 +346,11 @@ impl App<'_> {
                         format!("Cancel/Close Popup: {:?}", self.popup_stack.last())
                     );
                     self.popup_stack.pop();
+                }
+                AppEvent::ConfirmQuitApp => {
+                    // Handle confirm quit app
+                    debug!("Confirm Quit App");
+                    self.quit();
                 }
             }
         }
